@@ -1,0 +1,505 @@
+---
+title: "Trigger & Stored Procedure"
+description: "Praktikum Trigger & Stored Procedure."
+date: "2025-09-22"
+---
+
+import Callout from "@/components/Callout.astro";
+
+---
+
+## Trigger & Stored Procedure 🔎
+
+<Callout type="error">
+  Berdoa sebelum belajar, biar lancar.
+</Callout>
+
+Buat database.
+```sql
+CREATE DATABASE ecommerce;
+```
+
+Melihat semua database.
+```sql
+SHOW DATABASES;
+```
+
+Menggunakan database yang dipilih.
+```sql
+USE ecommerce;
+```
+
+Melihat semua Table.
+```sql
+SHOW TABLES;
+```
+
+Ecommerce DDL.
+
+```sql
+CREATE TABLE country (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  country_name VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE address (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  unit_number   VARCHAR(20),
+  street_number VARCHAR(20),
+  address_line1 VARCHAR(255) NOT NULL,
+  address_line2 VARCHAR(255),
+  city          VARCHAR(100) NOT NULL,
+  region        VARCHAR(100),
+  postal_code   VARCHAR(20),
+  country_id    BIGINT UNSIGNED NOT NULL,
+  KEY idx_address_country (country_id),
+  CONSTRAINT fk_address_country FOREIGN KEY (country_id) REFERENCES country(id)
+);
+
+CREATE TABLE site_user (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  email_address VARCHAR(255) NOT NULL UNIQUE,
+  phone_number  VARCHAR(32),
+  password      VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE payment_type (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  value VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE product_category (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  parent_category_id BIGINT UNSIGNED NULL,
+  category_name VARCHAR(150) NOT NULL,
+  KEY idx_prodcat_parent (parent_category_id),
+  CONSTRAINT fk_prodcat_parent FOREIGN KEY (parent_category_id) REFERENCES product_category(id)
+    ON DELETE SET NULL
+);
+
+CREATE TABLE product (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  category_id BIGINT UNSIGNED NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  description TEXT,
+  product_image TEXT,
+  KEY idx_product_category (category_id),
+  CONSTRAINT fk_product_category FOREIGN KEY (category_id) REFERENCES product_category(id)
+);
+
+CREATE TABLE product_item (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id BIGINT UNSIGNED NOT NULL,
+  sku VARCHAR(100) NOT NULL UNIQUE,
+  qty_in_stock INT UNSIGNED NOT NULL DEFAULT 0,
+  product_image TEXT,
+  price DECIMAL(12,2) NOT NULL,
+  KEY idx_productitem_product (product_id),
+  CONSTRAINT fk_productitem_product FOREIGN KEY (product_id) REFERENCES product(id)
+);
+
+CREATE TABLE variation (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  category_id BIGINT UNSIGNED NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  KEY idx_variation_category (category_id),
+  CONSTRAINT fk_variation_category FOREIGN KEY (category_id) REFERENCES product_category(id)
+);
+
+CREATE TABLE variation_option (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  variation_id BIGINT UNSIGNED NOT NULL,
+  value VARCHAR(100) NOT NULL,
+  KEY idx_varopt_variation (variation_id),
+  CONSTRAINT fk_varopt_variation FOREIGN KEY (variation_id) REFERENCES variation(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE product_configuration (
+  product_item_id BIGINT UNSIGNED NOT NULL,
+  variation_option_id BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (product_item_id, variation_option_id),
+  KEY idx_pc_varopt (variation_option_id),
+  CONSTRAINT fk_pc_item FOREIGN KEY (product_item_id) REFERENCES product_item(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_pc_varopt FOREIGN KEY (variation_option_id) REFERENCES variation_option(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE promotion (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  description TEXT,
+  discount_rate DECIMAL(5,2) NOT NULL,
+  start_date DATE NOT NULL,
+  end_date   DATE NOT NULL
+);
+
+CREATE TABLE promotion_category (
+  category_id BIGINT UNSIGNED NOT NULL,
+  promotion_id BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (category_id, promotion_id),
+  KEY idx_promocat_promo (promotion_id),
+  CONSTRAINT fk_promocat_category FOREIGN KEY (category_id) REFERENCES product_category(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_promocat_promotion FOREIGN KEY (promotion_id) REFERENCES promotion(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE user_payment_method (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  payment_type_id BIGINT UNSIGNED NOT NULL,
+  provider VARCHAR(100),
+  account_number VARCHAR(64),
+  expiry_date DATE,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  default_key BIGINT UNSIGNED GENERATED ALWAYS AS (IF(is_default, user_id, NULL)) VIRTUAL,
+  KEY idx_userpay_user (user_id),
+  KEY idx_userpay_type (payment_type_id),
+  UNIQUE KEY uq_userpay_default (default_key),
+  CONSTRAINT fk_userpay_user FOREIGN KEY (user_id) REFERENCES site_user(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_userpay_type FOREIGN KEY (payment_type_id) REFERENCES payment_type(id)
+);
+
+CREATE TABLE user_address (
+  user_id BIGINT UNSIGNED NOT NULL,
+  address_id BIGINT UNSIGNED NOT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  default_key BIGINT UNSIGNED GENERATED ALWAYS AS (IF(is_default, user_id, NULL)) VIRTUAL,
+  PRIMARY KEY (user_id, address_id),
+  UNIQUE KEY uq_useraddr_default (default_key),
+  KEY idx_useraddr_address (address_id),
+  CONSTRAINT fk_useraddr_user FOREIGN KEY (user_id) REFERENCES site_user(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_useraddr_address FOREIGN KEY (address_id) REFERENCES address(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE shopping_cart (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  KEY idx_cart_user (user_id),
+  CONSTRAINT fk_cart_user FOREIGN KEY (user_id) REFERENCES site_user(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE shopping_cart_item (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  cart_id BIGINT UNSIGNED NOT NULL,
+  product_item_id BIGINT UNSIGNED NOT NULL,
+  qty INT UNSIGNED NOT NULL,
+  UNIQUE KEY uq_cart_product (cart_id, product_item_id),
+  KEY idx_cartitem_cart (cart_id),
+  KEY idx_cartitem_item (product_item_id),
+  CONSTRAINT fk_cartitem_cart FOREIGN KEY (cart_id) REFERENCES shopping_cart(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_cartitem_item FOREIGN KEY (product_item_id) REFERENCES product_item(id)
+);
+
+CREATE TABLE shipping_method (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  price DECIMAL(12,2) NOT NULL
+);
+
+CREATE TABLE order_status (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  status VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE shop_order (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  order_date DATETIME NOT NULL,
+  payment_method_id BIGINT UNSIGNED NULL,
+  shipping_address BIGINT UNSIGNED NULL,
+  shipping_method BIGINT UNSIGNED NULL,
+  order_total DECIMAL(12,2) NOT NULL,
+  order_status BIGINT UNSIGNED NULL,
+  KEY idx_order_user (user_id),
+  KEY idx_order_payment_method (payment_method_id),
+  KEY idx_order_shipping_address (shipping_address),
+  KEY idx_order_shipping_method (shipping_method),
+  KEY idx_order_status (order_status),
+  CONSTRAINT fk_order_user FOREIGN KEY (user_id) REFERENCES site_user(id),
+  CONSTRAINT fk_order_payment FOREIGN KEY (payment_method_id) REFERENCES user_payment_method(id),
+  CONSTRAINT fk_order_shipaddr FOREIGN KEY (shipping_address) REFERENCES address(id),
+  CONSTRAINT fk_order_shipmethod FOREIGN KEY (shipping_method) REFERENCES shipping_method(id),
+  CONSTRAINT fk_order_status FOREIGN KEY (order_status) REFERENCES order_status(id)
+);
+
+CREATE TABLE order_line (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_item_id BIGINT UNSIGNED NOT NULL,
+  order_id BIGINT UNSIGNED NOT NULL,
+  qty INT UNSIGNED NOT NULL,
+  price DECIMAL(12,2) NOT NULL,
+  KEY idx_oline_order (order_id),
+  KEY idx_oline_item (product_item_id),
+  CONSTRAINT fk_oline_item FOREIGN KEY (product_item_id) REFERENCES product_item(id),
+  CONSTRAINT fk_oline_order FOREIGN KEY (order_id) REFERENCES shop_order(id)
+    ON DELETE CASCADE
+);
+
+CREATE TABLE user_review (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  ordered_product_id BIGINT UNSIGNED NOT NULL,
+  rating_value INT NOT NULL,
+  comment TEXT,
+  KEY idx_review_user (user_id),
+  KEY idx_review_oline (ordered_product_id),
+  CONSTRAINT fk_review_user FOREIGN KEY (user_id) REFERENCES site_user(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_review_orderline FOREIGN KEY (ordered_product_id) REFERENCES order_line(id)
+    ON DELETE CASCADE
+);
+```
+
+Melihat struktur tabel.
+```sql
+SHOW COLUMNS from table_name;
+```
+
+Isi Data Dummy.
+
+```sql
+START TRANSACTION;
+
+INSERT INTO country (id, country_name) VALUES
+(1,'Country 1'),(2,'Country 2'),(3,'Country 3'),(4,'Country 4'),(5,'Country 5'),
+(6,'Country 6'),(7,'Country 7'),(8,'Country 8'),(9,'Country 9'),(10,'Country 10');
+
+INSERT INTO address (id, unit_number, street_number, address_line1, address_line2, city, region, postal_code, country_id) VALUES
+(1,'1A','10','Jl. Mawar 1',NULL,'Kota A','Region A','11111',1),
+(2,'2B','20','Jl. Mawar 2',NULL,'Kota B','Region B','22222',2),
+(3,'3C','30','Jl. Mawar 3',NULL,'Kota C','Region C','33333',3),
+(4,'4D','40','Jl. Mawar 4',NULL,'Kota D','Region D','44444',4),
+(5,'5E','50','Jl. Mawar 5',NULL,'Kota E','Region E','55555',5),
+(6,'6F','60','Jl. Melati 6',NULL,'Kota F','Region F','66666',6),
+(7,'7G','70','Jl. Melati 7',NULL,'Kota G','Region G','77777',7),
+(8,'8H','80','Jl. Melati 8',NULL,'Kota H','Region H','88888',8),
+(9,'9I','90','Jl. Kenanga 9',NULL,'Kota I','Region I','99999',9),
+(10,'10J','100','Jl. Kenanga 10',NULL,'Kota J','Region J','10100',10);
+
+INSERT INTO site_user (id, email_address, phone_number, password) VALUES
+(1,'user1@example.com','0811111111','pass1'),
+(2,'user2@example.com','0822222222','pass2'),
+(3,'user3@example.com','0833333333','pass3'),
+(4,'user4@example.com','0844444444','pass4'),
+(5,'user5@example.com','0855555555','pass5'),
+(6,'user6@example.com','0866666666','pass6'),
+(7,'user7@example.com','0877777777','pass7'),
+(8,'user8@example.com','0888888888','pass8'),
+(9,'user9@example.com','0899999999','pass9'),
+(10,'user10@example.com','0800000000','pass10');
+
+INSERT INTO payment_type (id, value) VALUES
+(1,'Credit Card'),(2,'Debit Card'),(3,'Virtual Account'),(4,'E-Wallet A'),(5,'E-Wallet B'),
+(6,'Bank Transfer'),(7,'PayLater'),(8,'COD'),(9,'Gift Card'),(10,'Crypto');
+
+INSERT INTO product_category (id, parent_category_id, category_name) VALUES
+(1,NULL,'Electronics'),
+(2,NULL,'Fashion'),
+(3,NULL,'Grocery'),
+(4,NULL,'Home & Living'),
+(5,NULL,'Sports'),
+(6,1,'Mobile'),
+(7,1,'Laptop'),
+(8,2,'Men'),
+(9,2,'Women'),
+(10,3,'Snacks');
+
+INSERT INTO product (id, category_id, name, description, product_image) VALUES
+(1,6,'Phone A','Smartphone A',NULL),
+(2,6,'Phone B','Smartphone B',NULL),
+(3,7,'Laptop A','Laptop A desc',NULL),
+(4,7,'Laptop B','Laptop B desc',NULL),
+(5,8,'T-Shirt A','Men T-Shirt',NULL),
+(6,9,'Dress A','Women Dress',NULL),
+(7,10,'Chips A','Snack chips',NULL),
+(8,4,'Lamp A','Desk lamp',NULL),
+(9,5,'Ball A','Football',NULL),
+(10,3,'Rice A','Rice 5kg',NULL);
+
+INSERT INTO product_item (id, product_id, sku, qty_in_stock, product_image, price) VALUES
+(1,1,'SKU0001',100,NULL,1999000.00),
+(2,2,'SKU0002',80 ,NULL,2499000.00),
+(3,3,'SKU0003',50 ,NULL,9999000.00),
+(4,4,'SKU0004',40 ,NULL,12999000.00),
+(5,5,'SKU0005',200,NULL,149000.00),
+(6,6,'SKU0006',150,NULL,349000.00),
+(7,7,'SKU0007',300,NULL,19000.00),
+(8,8,'SKU0008',120,NULL,99000.00),
+(9,9,'SKU0009',140,NULL,199000.00),
+(10,10,'SKU0010',500,NULL,69000.00);
+
+INSERT INTO variation (id, category_id, name) VALUES
+(1,6,'Color'),(2,6,'Storage'),(3,7,'RAM'),
+(4,7,'Screen Size'),(5,8,'Size'),(6,9,'Size'),
+(7,10,'Flavor'),(8,4,'Watt'),(9,5,'Size'),(10,3,'Weight');
+
+INSERT INTO variation_option (id, variation_id, value) VALUES
+(1,1,'Black'),(2,2,'128GB'),(3,3,'8GB'),(4,4,'15 inch'),(5,5,'L'),
+(6,6,'M'),(7,7,'BBQ'),(8,8,'9W'),(9,9,'5'),(10,10,'5kg');
+
+INSERT INTO product_configuration (product_item_id, variation_option_id) VALUES
+(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7),(8,8),(9,9),(10,10);
+
+INSERT INTO promotion (id, name, description, discount_rate, start_date, end_date) VALUES
+(1,'Promo 1','Diskon 1',10.00,'2025-09-01','2025-10-01'),
+(2,'Promo 2','Diskon 2',15.00,'2025-09-02','2025-10-02'),
+(3,'Promo 3','Diskon 3',5.00 ,'2025-09-03','2025-10-03'),
+(4,'Promo 4','Diskon 4',7.50 ,'2025-09-04','2025-10-04'),
+(5,'Promo 5','Diskon 5',20.00,'2025-09-05','2025-10-05'),
+(6,'Promo 6','Diskon 6',12.00,'2025-09-06','2025-10-06'),
+(7,'Promo 7','Diskon 7',8.00 ,'2025-09-07','2025-10-07'),
+(8,'Promo 8','Diskon 8',18.00,'2025-09-08','2025-10-08'),
+(9,'Promo 9','Diskon 9',25.00,'2025-09-09','2025-10-09'),
+(10,'Promo 10','Diskon 10',30.00,'2025-09-10','2025-10-10');
+
+INSERT INTO promotion_category (category_id, promotion_id) VALUES
+(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7),(8,8),(9,9),(10,10);
+
+INSERT INTO user_payment_method
+(id, user_id, payment_type_id, provider, account_number, expiry_date, is_default)
+VALUES
+(1,1,1,'Provider 1','ACC0001','2027-12-31',1),
+(2,2,2,'Provider 2','ACC0002','2027-12-31',1),
+(3,3,3,'Provider 3','ACC0003','2027-12-31',1),
+(4,4,4,'Provider 4','ACC0004','2027-12-31',1),
+(5,5,5,'Provider 5','ACC0005','2027-12-31',1),
+(6,6,6,'Provider 6','ACC0006','2027-12-31',1),
+(7,7,7,'Provider 7','ACC0007','2027-12-31',1),
+(8,8,8,'Provider 8','ACC0008','2027-12-31',1),
+(9,9,9,'Provider 9','ACC0009','2027-12-31',1),
+(10,10,10,'Provider 10','ACC0010','2027-12-31',1);
+
+INSERT INTO user_address (user_id, address_id, is_default) VALUES
+(1,1,1),(2,2,1),(3,3,1),(4,4,1),(5,5,1),
+(6,6,1),(7,7,1),(8,8,1),(9,9,1),(10,10,1);
+
+INSERT INTO shopping_cart (id, user_id) VALUES
+(1,1),(2,2),(3,3),(4,4),(5,5),(6,6),(7,7),(8,8),(9,9),(10,10);
+
+INSERT INTO shopping_cart_item (id, cart_id, product_item_id, qty) VALUES
+(1,1,1,1),(2,2,2,2),(3,3,3,1),(4,4,4,1),(5,5,5,3),
+(6,6,6,2),(7,7,7,4),(8,8,8,1),(9,9,9,2),(10,10,10,5);
+
+INSERT INTO shipping_method (id, name, price) VALUES
+(1,'Regular 1',10000.00),(2,'Regular 2',15000.00),(3,'Regular 3',12000.00),
+(4,'Express 1',20000.00),(5,'Express 2',25000.00),(6,'SameDay 1',30000.00),
+(7,'Cargo 1',18000.00),(8,'Cargo 2',22000.00),(9,'Economy',8000.00),(10,'Pickup',0.00);
+
+INSERT INTO order_status (id, status) VALUES
+(1,'Pending'),(2,'Paid'),(3,'Processing'),(4,'Shipped'),(5,'Delivered'),
+(6,'Cancelled'),(7,'Refunded'),(8,'On Hold'),(9,'Failed'),(10,'Completed');
+
+INSERT INTO shop_order
+(id, user_id, order_date, payment_method_id, shipping_address, shipping_method, order_total, order_status)
+VALUES
+(1,1,'2025-09-01 10:00:00',1,1,1,1999000.00,2),
+(2,2,'2025-09-02 10:00:00',2,2,2,2499000.00,2),
+(3,3,'2025-09-03 10:00:00',3,3,3,9999000.00,3),
+(4,4,'2025-09-04 10:00:00',4,4,4,12999000.00,3),
+(5,5,'2025-09-05 10:00:00',5,5,5,149000.00,4),
+(6,6,'2025-09-06 10:00:00',6,6,6,349000.00,4),
+(7,7,'2025-09-07 10:00:00',7,7,7,19000.00,5),
+(8,8,'2025-09-08 10:00:00',8,8,8,99000.00,5),
+(9,9,'2025-09-09 10:00:00',9,9,9,199000.00,2),
+(10,10,'2025-09-10 10:00:00',10,10,10,69000.00,10);
+
+INSERT INTO order_line (id, product_item_id, order_id, qty, price) VALUES
+(1,1,1,1,1999000.00),
+(2,2,2,1,2499000.00),
+(3,3,3,1,9999000.00),
+(4,4,4,1,12999000.00),
+(5,5,5,2,149000.00),
+(6,6,6,1,349000.00),
+(7,7,7,3,19000.00),
+(8,8,8,1,99000.00),
+(9,9,9,2,199000.00),
+(10,10,10,1,69000.00);
+
+INSERT INTO user_review (id, user_id, ordered_product_id, rating_value, comment) VALUES
+(1,1,1,5,'Mantap'),
+(2,2,2,4,'Bagus'),
+(3,3,3,5,'Top'),
+(4,4,4,4,'Oke'),
+(5,5,5,4,'Worth it'),
+(6,6,6,5,'Recommended'),
+(7,7,7,3,'Cukup'),
+(8,8,8,4,'Sesuai'),
+(9,9,9,5,'Great'),
+(10,10,10,5,'Excellent');
+
+COMMIT;
+```
+
+Trigger Stok Tidak Boleh Negatif saat insert
+```sql
+DELIMITER //
+
+DROP TRIGGER IF EXISTS trg_product_item_prevent_negative_insert//
+CREATE TRIGGER trg_product_item_prevent_negative_insert
+BEFORE INSERT ON product_item
+FOR EACH ROW
+BEGIN
+  IF (NEW.price < 0) OR (NEW.qty_in_stock < 0) THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'price/qty_in_stock tidak boleh negatif';
+  END IF;
+END//
+
+DELIMITER ;
+
+-- Testing Trigger
+INSERT INTO product_item (product_id, sku, qty_in_stock, product_image, price)
+VALUES (1, 'SKU_NEG_PRICE', 10, NULL, -1000.00);
+
+INSERT INTO product_item (product_id, sku, qty_in_stock, product_image, price)
+VALUES (1, 'SKU_OK_1', 5, NULL, 12345.67);
+```
+
+Trigger normalisasi email ketika insert
+```sql
+DELIMITER //
+
+DROP TRIGGER IF EXISTS trg_site_user_lower_email_insert //
+CREATE TRIGGER trg_site_user_lower_email_insert
+BEFORE INSERT ON site_user
+FOR EACH ROW
+BEGIN
+  SET NEW.email_address = LOWER(NEW.email_address);
+END //
+
+DELIMITER ;
+
+-- Testing Trigger
+insert into site_user (email_address, phone_number, password)
+values ('Zam@gmail.com', '08567412341', 'pass10');
+```
+
+STORE PROCEDURE hitung product_item berdasarkan product.id
+```sql
+DELIMITER //
+
+DROP PROCEDURE IF EXISTS CountProductItemByProductId //
+CREATE PROCEDURE CountProductItemByProductId(IN p_product_id BIGINT UNSIGNED)
+BEGIN
+  SELECT COUNT(*) AS total_items
+  FROM product_item
+  WHERE product_id = p_product_id;
+END //
+
+DELIMITER ;
+
+-- Testing STORE PROCEDURE
+CALL CountProductItemByProductId(1);
+```
+---
+
+## Sumber
+
+- [Database Star](https://www.databasestar.com): [Ecommerce DB Design](https://dbshostedfiles.s3.us-west-2.amazonaws.com/dbs/dbdesign_ecommerce.pdf)
